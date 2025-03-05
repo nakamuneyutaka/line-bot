@@ -23,7 +23,7 @@ def webhook():
             if event["type"] == "message" and "text" in event["message"]:
                 reply_token = event["replyToken"]
                 user_message = event["message"]["text"]
-                
+
                 # 🔹 OpenAI API を使って返信を生成
                 reply_text = generate_gpt_response(user_message)
 
@@ -33,19 +33,23 @@ def webhook():
     return jsonify({"status": "ok"})
 
 def generate_gpt_response(user_message):
-    """OpenAI API を使ってメッセージを生成"""
+    """OpenAI API を使ってメッセージを生成（カスタムGPT対応版）"""
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4",  # 🔹 ここを変更！
-        "messages": [{"role": "user", "content": user_message}]
+        "model": "gpt-4-turbo",  # 🔹 クリエイトGPTを使う
+        "messages": [{"role": "user", "content": user_message}],
+        "tool_choice": "auto"  # 🔹 カスタムGPTのツールを自動選択
     }
     response = requests.post(url, json=data, headers=headers)
     result = response.json()
-    
+
+    # 🔹 OpenAI APIのレスポンスをログに出力（デバッグ用）
+    print("OpenAI API Response:", result)
+
     # APIのレスポンスを解析して返信テキストを取得
     return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
 
