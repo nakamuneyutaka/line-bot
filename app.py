@@ -8,6 +8,13 @@ app = Flask(__name__)
 LINE_ACCESS_TOKEN = os.getenv("LINE_ACCESS_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# APIキーの存在をチェック（デバッグ用）
+if not OPENAI_API_KEY:
+    print("⚠️ OPENAI_API_KEY が設定されていません！")
+
+if not LINE_ACCESS_TOKEN:
+    print("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
+
 @app.route("/", methods=["GET"])
 def home():
     return "LINE Bot with GPT is running!"
@@ -15,7 +22,7 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("Received:", data)  # ログにデータを出力
+    print("Received:", data)  # ログにデータを出力（デバッグ用）
 
     # イベントが含まれているかチェック
     if "events" in data:
@@ -33,25 +40,30 @@ def webhook():
     return jsonify({"status": "ok"})
 
 def generate_gpt_response(user_message):
-    """OpenAI API を使ってメッセージを生成（カスタムGPT対応版）"""
+    """OpenAI API を使ってカスタムGPTのメッセージを生成"""
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4-turbo",  # 🔹 クリエイトGPTを使う
-        "messages": [{"role": "user", "content": user_message}],
-        "tool_choice": "auto"  # 🔹 カスタムGPTのツールを自動選択
+        "model": "g-67c0fb788848819195db91164e464600",  # 🔹 カスタムGPTのIDを指定
+        "messages": [{"role": "user", "content": user_message}]
     }
-    response = requests.post(url, json=data, headers=headers)
-    result = response.json()
 
-    # 🔹 OpenAI APIのレスポンスをログに出力（デバッグ用）
-    print("OpenAI API Response:", result)
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        result = response.json()
 
-    # APIのレスポンスを解析して返信テキストを取得
-    return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
+        # 🔹 OpenAI APIのレスポンスをログに出力（デバッグ用）
+        print("OpenAI API Response:", result)
+
+        # APIのレスポンスを解析して返信テキストを取得
+        return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
+
+    except Exception as e:
+        print("⚠️ OpenAI API 呼び出し中にエラー:", e)
+        return "エラーが発生しました。"
 
 def send_line_reply(reply_token, text):
     """LINEに返信を送る関数"""
@@ -64,7 +76,13 @@ def send_line_reply(reply_token, text):
         "replyToken": reply_token,
         "messages": [{"type": "text", "text": text}]
     }
-    requests.post(url, json=data, headers=headers)
+
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        print("LINE API Response:", response.json())  # 🔹 レスポンスをログに出力
+
+    except Exception as e:
+        print("⚠️ LINE API 呼び出し中にエラー:", e)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
