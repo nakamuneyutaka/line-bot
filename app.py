@@ -4,17 +4,18 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# 🔹 アクセストークンを環境変数から取得する（セキュリティ対策！）
+# 環境変数からトークンとAPIキーを取得
 LINE_ACCESS_TOKEN = os.getenv("LINE_ACCESS_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 @app.route("/", methods=["GET"])
 def home():
-    return "LINE Bot is running!"
+    return "LINE Bot with GPT is running!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("Received:", data)  # 受け取ったデータをログに表示
+    print("Received:", data)  # ログにデータを出力
 
     # イベントが含まれているかチェック
     if "events" in data:
@@ -22,10 +23,31 @@ def webhook():
             if event["type"] == "message" and "text" in event["message"]:
                 reply_token = event["replyToken"]
                 user_message = event["message"]["text"]
-                reply_text = f"あなたは「{user_message}」と言いましたね！"
+                
+                # 🔹 OpenAI API を使って返信を生成
+                reply_text = generate_gpt_response(user_message)
+
+                # 🔹 LINEに返信を送信
                 send_line_reply(reply_token, reply_text)
 
     return jsonify({"status": "ok"})
+
+def generate_gpt_response(user_message):
+    """OpenAI API を使ってメッセージを生成"""
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    data = {
+        "model": "gpt-4",  # 🔹 GPT-4 を使用（プランによっては gpt-3.5-turbo に変更）
+        "messages": [{"role": "user", "content": user_message}]
+    }
+    response = requests.post(url, json=data, headers=headers)
+    result = response.json()
+    
+    # APIのレスポンスを解析して返信テキストを取得
+    return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
 
 def send_line_reply(reply_token, text):
     """LINEに返信を送る関数"""
