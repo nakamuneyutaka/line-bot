@@ -40,12 +40,22 @@ def generate_gpt_response(user_message):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "g-67c0fb788848819195db91164e464600",  # 🔹 カスタムGPTのモデルIDを指定！
+        "model": "g-67c0fb788848819195db91164e464600",  # 🔹 クリエイトGPTのモデルID
         "messages": [{"role": "user", "content": user_message}]
     }
+    
+    # APIリクエストを送信
     response = requests.post(url, json=data, headers=headers)
     result = response.json()
     
+    # 🔹 APIのレスポンスをログに出力
+    print("🔹 OpenAI API Response:", result)
+
+    # エラーハンドリング
+    if "error" in result:
+        print("🚨 OpenAI API エラー:", result["error"])
+        return f"エラーが発生しました: {result['error']['message']}"
+
     # APIのレスポンスを解析して返信テキストを取得
     return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
 
