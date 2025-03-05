@@ -40,7 +40,7 @@ def generate_gpt_response(user_message):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4",  # 🔹 GPT-4 を使用（プランによっては gpt-3.5-turbo に変更）
+        "model": "g-67c0fb788848819195db91164e464600",  # 🔹 カスタムGPTのモデルIDを指定！
         "messages": [{"role": "user", "content": user_message}]
     }
     response = requests.post(url, json=data, headers=headers)
