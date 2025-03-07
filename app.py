@@ -46,9 +46,10 @@ def generate_gpt_response(user_message):
 
         print(f"✅ アシスタント実行成功: {run_id}")
 
-        # アシスタントの実行状態をポーリング
-        for _ in range(5):  # 最大10秒間待機
+        # アシスタントの実行状態をポーリング（最大10秒）
+        for _ in range(5):
             time.sleep(2)
+            print("🔹 Run ステータス取得開始")
             run_status_response = requests.get(
                 f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
                 headers=HEADERS
@@ -62,12 +63,12 @@ def generate_gpt_response(user_message):
             print(f"🔹 Run ステータス: {run_status}")
 
             if run_status == "completed":
-                break  # 完了したら次へ
+                break  # 実行完了なら次へ
             elif run_status in ["failed", "cancelled"]:
                 app.logger.error(f"❌ Run が失敗またはキャンセルされました: {run_status_response.json()}")
                 return "エラーが発生しました。"
 
-        print("🔹 レスポンス取得開始")
+        print("🔹 メッセージ取得開始")
         response = requests.get(
             f"https://api.openai.com/v1/threads/{thread_id}/messages",
             headers=HEADERS
