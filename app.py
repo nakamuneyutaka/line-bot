@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -12,10 +13,8 @@ ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # カスタムGPT（Assistant）のID
 # 環境変数の確認
 if not OPENAI_API_KEY:
     app.logger.warning("⚠️ OPENAI_API_KEY が設定されていません！")
-
 if not LINE_ACCESS_TOKEN:
     app.logger.warning("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
-
 if not ASSISTANT_ID:
     app.logger.warning("⚠️ ASSISTANT_ID が設定されていません！")
 
@@ -51,40 +50,44 @@ def webhook():
 
 def generate_gpt_response(user_message):
     """Assistants API を使ってカスタムGPTのメッセージを生成"""
-    # 1. スレッドを作成（ユーザーごとのスレッドID管理が必要）
-    thread_response = requests.post(
-        "https://api.openai.com/v1/threads",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-        json={}
-    )
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+
+    # 1. スレッドを作成
+    thread_response = requests.post("https://api.openai.com/v1/threads", headers=headers, json={})
+    if thread_response.status_code != 200:
+        app.logger.error(f"❌ スレッド作成エラー: {thread_response.status_code}, {thread_response.text}")
+        return "エラーが発生しました。"
     thread_id = thread_response.json().get("id")
 
     # 2. スレッドにメッセージを追加
-    requests.post(
+    message_response = requests.post(
         f"https://api.openai.com/v1/threads/{thread_id}/messages",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        headers=headers,
         json={"role": "user", "content": user_message}
     )
+    if message_response.status_code != 200:
+        app.logger.error(f"❌ メッセージ追加エラー: {message_response.status_code}, {message_response.text}")
+        return "エラーが発生しました。"
 
     # 3. カスタムGPT（Assistant）を実行
     run_response = requests.post(
         f"https://api.openai.com/v1/threads/{thread_id}/runs",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        headers=headers,
         json={"assistant_id": ASSISTANT_ID}
     )
-
-    run_data = run_response.json()
-    run_id = run_data.get("id")
+    if run_response.status_code != 200:
+        app.logger.error(f"❌ Assistant 実行エラー: {run_response.status_code}, {run_response.text}")
+        return "エラーが発生しました。"
+    run_id = run_response.json().get("id")
 
     # 4. 結果が返るまでポーリング（最大3回）
     for _ in range(3):
-        response = requests.get(
-            f"https://api.openai.com/v1/threads/{thread_id}/messages",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-        )
-        messages = response.json().get("messages", [])
-        if messages:
-            return messages[-1]["content"]
+        time.sleep(2)  # 🔹 API制限を考慮して少し待つ
+        response = requests.get(f"https://api.openai.com/v1/threads/{thread_id}/messages", headers=headers)
+        if response.status_code == 200:
+            messages = response.json().get("messages", [])
+            if messages:
+                return messages[-1]["content"]
 
     return "エラーが発生しました。"
 
