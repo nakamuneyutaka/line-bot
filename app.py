@@ -1,17 +1,31 @@
+import os
 import time
 import requests
+from dotenv import load_dotenv
 from flask import current_app
 
-# OpenAI API のヘッダー（環境変数から取得している前提）
-HEADERS = {
-    "Authorization": f"Bearer {OPENAI_API_KEY}",
-    "Content-Type": "application/json",
-    "OpenAI-Beta": "assistants=v2"
-}
+# 環境変数をロード
+load_dotenv()
+
+# OpenAI APIキーを環境変数から取得
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ASSISTANT_ID = os.getenv("ASSISTANT_ID")
+
+if not OPENAI_API_KEY:
+    raise ValueError("❌ 環境変数 'OPENAI_API_KEY' が設定されていません。")
+
+if not ASSISTANT_ID:
+    raise ValueError("❌ 環境変数 'ASSISTANT_ID' が設定されていません。")
 
 def generate_gpt_response(user_message):
     """Assistants API を使ってカスタムGPTのメッセージを生成"""
     try:
+        HEADERS = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2"
+        }
+
         with current_app.app_context():  # Flaskのコンテキストを確保
             current_app.logger.info("🔹 スレッド作成開始")
             thread_response = requests.post("https://api.openai.com/v1/threads", headers=HEADERS, json={})
