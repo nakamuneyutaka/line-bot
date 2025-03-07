@@ -37,6 +37,7 @@ def chat():
         return jsonify({"error": "メッセージが空です"}), 400
     
     response = generate_gpt_response(user_message)
+    app.logger.info(f"🔹 最終レスポンス: {response}")  # 最後にログを出す
     return jsonify({"response": response})
 
 def generate_gpt_response(user_message):
@@ -125,7 +126,10 @@ def generate_gpt_response(user_message):
             app.logger.error(f"❌ メッセージ取得エラー: {response.status_code}, {response.text}")
             return "メッセージ取得でエラーが発生しました。"
 
-        messages = response.json().get("messages", [])
+        response_json = response.json()
+        app.logger.info(f"🔹 OpenAI API レスポンス: {response_json}")  # ここで詳細なログを出力
+
+        messages = response_json.get("messages", [])
         if not messages:
             app.logger.error("❌ 取得したメッセージが空です。")
             return "AIからのレスポンスがありませんでした。"
@@ -134,11 +138,15 @@ def generate_gpt_response(user_message):
         last_message = messages[-1].get("content")
         if isinstance(last_message, list) and last_message:
             if isinstance(last_message[0], dict) and "text" in last_message[0]:
+                app.logger.info(f"✅ AI からの最終メッセージ: {last_message[0]['text']}")
                 return last_message[0]["text"]
+            app.logger.error("❌ メッセージ解析エラー")
             return "メッセージ解析エラーが発生しました。"
         elif isinstance(last_message, str):
+            app.logger.info(f"✅ AI からの最終メッセージ: {last_message}")
             return last_message  # 直接テキストとして返す場合
 
+        app.logger.error("❌ 予期しないエラーが発生しました。")
         return "予期しないエラーが発生しました。"
 
     except Exception as e:
