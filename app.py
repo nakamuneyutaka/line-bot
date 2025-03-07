@@ -8,12 +8,12 @@ app = Flask(__name__)
 LINE_ACCESS_TOKEN = os.getenv("LINE_ACCESS_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# APIキーの存在をチェック（デバッグ用）
+# 環境変数の確認をログに出力（デバッグ用）
 if not OPENAI_API_KEY:
-    print("⚠️ OPENAI_API_KEY が設定されていません！")
+    app.logger.warning("⚠️ OPENAI_API_KEY が設定されていません！")
 
 if not LINE_ACCESS_TOKEN:
-    print("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
+    app.logger.warning("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
 
 @app.route("/", methods=["GET"])
 def home():
@@ -21,30 +21,31 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    print("Received:", data)  # ログにデータを出力（デバッグ用）
+    """LINEからのWebhookを受信して処理"""
+    data = request.get_json(force=True)  # force=TrueでJSONパースエラーを防ぐ
+    app.logger.info(f"Received: {data}")  # ログにデータを出力（デバッグ用）
 
-    # イベントが含まれているかチェック
-    if "events" in data:
-        for event in data["events"]:
-            reply_token = event.get("replyToken")
-            user_message = event.get("message", {}).get("text", "")
+    if not data or "events" not in data:
+        app.logger.warning("⚠️ Webhook に events データが含まれていません！")
+        return jsonify({"status": "error", "message": "Invalid request"}), 400
 
-            # replyToken がない場合はスキップ
-            if not reply_token:
-                print("⚠️ Warning: replyTokenが見つかりません。イベントデータ:", event)
-                continue
+    for event in data["events"]:
+        reply_token = event.get("replyToken")
+        user_message = event.get("message", {}).get("text", "")
 
-            # メッセージが空ならスキップ
-            if not user_message:
-                print("⚠️ Warning: メッセージが見つかりません。イベントデータ:", event)
-                continue
+        if not reply_token:
+            app.logger.warning(f"⚠️ Warning: replyToken が見つかりません。イベントデータ: {event}")
+            continue
 
-            # 🔹 OpenAI API を使って返信を生成
-            reply_text = generate_gpt_response(user_message)
+        if not user_message:
+            app.logger.warning(f"⚠️ Warning: メッセージが見つかりません。イベントデータ: {event}")
+            continue
 
-            # 🔹 LINEに返信を送信
-            send_line_reply(reply_token, reply_text)
+        # 🔹 OpenAI API を使って返信を生成
+        reply_text = generate_gpt_response(user_message)
+
+        # 🔹 LINEに返信を送信
+        send_line_reply(reply_token, reply_text)
 
     return jsonify({"status": "ok"})
 
@@ -56,23 +57,26 @@ def generate_gpt_response(user_message):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4-turbo",  # 🔹 基本モデルはGPT-4-Turbo
-        "custom_gpt_id": "g-67c0fb788848819195db91164e464600",  # 🔹 カスタムGPTのIDを明示的に指定
+        "model": "gpt-4-turbo",
+        "custom_gpt_id": "g-67c0fb788848819195db91164e464600",
         "messages": [{"role": "user", "content": user_message}]
     }
 
     try:
         response = requests.post(url, json=data, headers=headers)
+        
+        # HTTP ステータスコードをチェック
+        if response.status_code != 200:
+            app.logger.error(f"❌ OpenAI API エラー: {response.status_code}, {response.text}")
+            return "エラーが発生しました。"
+
         result = response.json()
+        app.logger.info(f"OpenAI API Response: {result}")  # 🔹 レスポンスをログに出力
 
-        # 🔹 OpenAI APIのレスポンスをログに出力（デバッグ用）
-        print("OpenAI API Response:", result)
-
-        # APIのレスポンスを解析して返信テキストを取得
         return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
 
     except Exception as e:
-        print("⚠️ OpenAI API 呼び出し中にエラー:", e)
+        app.logger.error(f"⚠️ OpenAI API 呼び出し中にエラー: {e}")
         return "エラーが発生しました。"
 
 def send_line_reply(reply_token, text):
@@ -89,14 +93,14 @@ def send_line_reply(reply_token, text):
 
     try:
         response = requests.post(url, json=data, headers=headers)
-        print("LINE API Response:", response.json())  # 🔹 レスポンスをログに出力
+        app.logger.info(f"LINE API Response: {response.status_code}, {response.json()}")  # 🔹 ステータスコードもログに出力
+
+        if response.status_code != 200:
+            app.logger.error(f"❌ LINE API エラー: {response.status_code}, {response.text}")
 
     except Exception as e:
-        print("⚠️ LINE API 呼び出し中にエラー:", e)
+        app.logger.error(f"⚠️ LINE API 呼び出し中にエラー: {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
-# 🔹 これを追加！Gunicorn が `app` を見つけられるようにする
-app = app
