@@ -41,18 +41,28 @@ def chat():
     response = generate_gpt_response(user_message)
     return jsonify({"response": response})
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     """LINE の Webhook エンドポイント"""
-    signature = request.headers['X-Line-Signature']
+    if request.method == 'GET':
+        return "Webhook is running", 200  # Webhook の動作確認用
+
+    signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
-    
+
+    if not signature:
+        app.logger.error("❌ LINE Webhook の署名がありません")
+        return jsonify({"error": "Missing X-Line-Signature"}), 400
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         app.logger.error("❌ LINE Webhook の署名検証に失敗しました")
         return jsonify({"error": "Invalid signature"}), 400
-    
+    except Exception as e:
+        app.logger.error(f"⚠️ Webhook 処理中にエラー: {e}")
+        return jsonify({"error": "Webhook processing failed"}), 500
+
     return "OK", 200
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -66,11 +76,14 @@ def handle_message(event):
     if not ai_response:
         ai_response = "ごめんなさい、うまく応答できませんでした。"
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=ai_response)
-    )
-    app.logger.info(f"📤 AI の返信: {ai_response}")
+    try:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=ai_response)
+        )
+        app.logger.info(f"📤 AI の返信: {ai_response}")
+    except Exception as e:
+        app.logger.error(f"⚠️ LINE への返信エラー: {e}")
 
 def generate_gpt_response(user_message):
     """OpenAI Assistants API を使って AI のメッセージを取得"""
