@@ -27,16 +27,18 @@ def webhook():
     # イベントが含まれているかチェック
     if "events" in data:
         for event in data["events"]:
-            reply_token = event.get("replyToken")  # replyTokenがない場合Noneを返す
+            reply_token = event.get("replyToken")
             user_message = event.get("message", {}).get("text", "")
 
+            # replyToken がない場合はスキップ
             if not reply_token:
-                print("⚠️ Warning: replyTokenが見つかりません。スキップします。イベントデータ:", event)
-                continue  # エラーにせずスキップ
+                print("⚠️ Warning: replyTokenが見つかりません。イベントデータ:", event)
+                continue
 
+            # メッセージが空ならスキップ
             if not user_message:
-                print("⚠️ Warning: メッセージが見つかりません。スキップします。イベントデータ:", event)
-                continue  # エラーにせずスキップ
+                print("⚠️ Warning: メッセージが見つかりません。イベントデータ:", event)
+                continue
 
             # 🔹 OpenAI API を使って返信を生成
             reply_text = generate_gpt_response(user_message)
@@ -54,7 +56,7 @@ def generate_gpt_response(user_message):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "g-67c0fb788848819195db91164e464600",  # 🔹 カスタムGPTのIDを指定
+        "model": "gpt-4-turbo",  # 🔹 ここをカスタムGPTではなく gpt-4-turbo に変更
         "messages": [{"role": "user", "content": user_message}]
     }
 
@@ -64,10 +66,6 @@ def generate_gpt_response(user_message):
 
         # 🔹 OpenAI APIのレスポンスをログに出力（デバッグ用）
         print("OpenAI API Response:", result)
-
-        if "error" in result:
-            print("⚠️ OpenAI API エラー:", result["error"])
-            return f"⚠️ エラー: {result['error'].get('message', '不明なエラー')}"
 
         # APIのレスポンスを解析して返信テキストを取得
         return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
@@ -90,11 +88,7 @@ def send_line_reply(reply_token, text):
 
     try:
         response = requests.post(url, json=data, headers=headers)
-        response_json = response.json()
-        print("LINE API Response:", response_json)  # 🔹 レスポンスをログに出力
-
-        if response.status_code != 200:
-            print("⚠️ LINE API エラー:", response_json)  # エラー内容をログに出力
+        print("LINE API Response:", response.json())  # 🔹 レスポンスをログに出力
 
     except Exception as e:
         print("⚠️ LINE API 呼び出し中にエラー:", e)
