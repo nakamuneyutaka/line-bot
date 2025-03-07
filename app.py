@@ -49,14 +49,14 @@ def webhook():
     return jsonify({"status": "ok"})
 
 def generate_gpt_response(user_message):
-    """OpenAI API を使ってカスタムGPTのメッセージを生成"""
+    """OpenAI API を使ってGPT-4 Turboのメッセージを生成"""
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4-turbo",  # 🔹 ここをカスタムGPTではなく gpt-4-turbo に変更
+        "model": "gpt-4-turbo",  # 🔹 ここをGPT-4 Turbo に変更
         "messages": [{"role": "user", "content": user_message}]
     }
 
@@ -68,7 +68,10 @@ def generate_gpt_response(user_message):
         print("OpenAI API Response:", result)
 
         # APIのレスポンスを解析して返信テキストを取得
-        return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
+        if "choices" in result and len(result["choices"]) > 0:
+            return result["choices"][0]["message"]["content"]
+        else:
+            return "エラーが発生しました。GPTの応答がありません。"
 
     except Exception as e:
         print("⚠️ OpenAI API 呼び出し中にエラー:", e)
