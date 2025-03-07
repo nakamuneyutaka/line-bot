@@ -13,10 +13,19 @@ ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # カスタムGPT（Assistant）のID
 # 環境変数の確認
 if not OPENAI_API_KEY:
     app.logger.warning("⚠️ OPENAI_API_KEY が設定されていません！")
+
 if not LINE_ACCESS_TOKEN:
     app.logger.warning("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
+
 if not ASSISTANT_ID:
     app.logger.warning("⚠️ ASSISTANT_ID が設定されていません！")
+
+# OpenAI API の共通ヘッダー
+HEADERS = {
+    "Authorization": f"Bearer {OPENAI_API_KEY}",
+    "Content-Type": "application/json",
+    "OpenAI-Beta": "assistants=v2"  # Assistants API v2 のヘッダーを追加
+}
 
 @app.route("/", methods=["GET"])
 def home():
@@ -50,46 +59,57 @@ def webhook():
 
 def generate_gpt_response(user_message):
     """Assistants API を使ってカスタムGPTのメッセージを生成"""
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+    try:
+        # 1. スレッドを作成（ユーザーごとのスレッドID管理が必要）
+        thread_response = requests.post("https://api.openai.com/v1/threads", headers=HEADERS, json={})
+        if thread_response.status_code != 200:
+            app.logger.error(f"❌ スレッド作成エラー: {thread_response.status_code}, {thread_response.text}")
+            return "エラーが発生しました。"
 
-    # 1. スレッドを作成
-    thread_response = requests.post("https://api.openai.com/v1/threads", headers=headers, json={})
-    if thread_response.status_code != 200:
-        app.logger.error(f"❌ スレッド作成エラー: {thread_response.status_code}, {thread_response.text}")
-        return "エラーが発生しました。"
-    thread_id = thread_response.json().get("id")
+        thread_id = thread_response.json().get("id")
 
-    # 2. スレッドにメッセージを追加
-    message_response = requests.post(
-        f"https://api.openai.com/v1/threads/{thread_id}/messages",
-        headers=headers,
-        json={"role": "user", "content": user_message}
-    )
-    if message_response.status_code != 200:
-        app.logger.error(f"❌ メッセージ追加エラー: {message_response.status_code}, {message_response.text}")
-        return "エラーが発生しました。"
+        # 2. スレッドにメッセージを追加
+        message_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=HEADERS,
+            json={"role": "user", "content": user_message}
+        )
+        if message_response.status_code != 200:
+            app.logger.error(f"❌ メッセージ追加エラー: {message_response.status_code}, {message_response.text}")
+            return "エラーが発生しました。"
 
-    # 3. カスタムGPT（Assistant）を実行
-    run_response = requests.post(
-        f"https://api.openai.com/v1/threads/{thread_id}/runs",
-        headers=headers,
-        json={"assistant_id": ASSISTANT_ID}
-    )
-    if run_response.status_code != 200:
-        app.logger.error(f"❌ Assistant 実行エラー: {run_response.status_code}, {run_response.text}")
-        return "エラーが発生しました。"
-    run_id = run_response.json().get("id")
+        # 3. カスタムGPT（Assistant）を実行
+        run_response = requests.post(
+            f"https://api.openai.com/v1/threads/{thread_id}/runs",
+            headers=HEADERS,
+            json={"assistant_id": ASSISTANT_ID}
+        )
+        if run_response.status_code != 200:
+            app.logger.error(f"❌ アシスタント実行エラー: {run_response.status_code}, {run_response.text}")
+            return "エラーが発生しました。"
 
-    # 4. 結果が返るまでポーリング（最大3回）
-    for _ in range(3):
-        time.sleep(2)  # 🔹 API制限を考慮して少し待つ
-        response = requests.get(f"https://api.openai.com/v1/threads/{thread_id}/messages", headers=headers)
-        if response.status_code == 200:
+        run_id = run_response.json().get("id")
+
+        # 4. 結果が返るまでポーリング（最大3回）
+        for _ in range(3):
+            time.sleep(2)  # 2秒待つ（APIの制限回避）
+            response = requests.get(
+                f"https://api.openai.com/v1/threads/{thread_id}/messages",
+                headers=HEADERS
+            )
+            if response.status_code != 200:
+                app.logger.error(f"❌ メッセージ取得エラー: {response.status_code}, {response.text}")
+                return "エラーが発生しました。"
+
             messages = response.json().get("messages", [])
             if messages:
                 return messages[-1]["content"]
 
-    return "エラーが発生しました。"
+        return "エラーが発生しました。"
+
+    except Exception as e:
+        app.logger.error(f"⚠️ OpenAI API 呼び出し中にエラー: {e}")
+        return "エラーが発生しました。"
 
 def send_line_reply(reply_token, text):
     """LINEに返信を送る関数"""
