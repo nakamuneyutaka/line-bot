@@ -27,15 +27,22 @@ def webhook():
     # イベントが含まれているかチェック
     if "events" in data:
         for event in data["events"]:
-            if event["type"] == "message" and "text" in event["message"]:
-                reply_token = event["replyToken"]
-                user_message = event["message"]["text"]
+            reply_token = event.get("replyToken")  # replyTokenがない場合Noneを返す
+            user_message = event.get("message", {}).get("text", "")
 
-                # 🔹 OpenAI API を使って返信を生成
-                reply_text = generate_gpt_response(user_message)
+            if not reply_token:
+                print("⚠️ Warning: replyTokenが見つかりません。イベントデータ:", event)
+                return jsonify({"status": "error", "message": "replyToken not found"}), 400
 
-                # 🔹 LINEに返信を送信
-                send_line_reply(reply_token, reply_text)
+            if not user_message:
+                print("⚠️ Warning: メッセージが見つかりません。イベントデータ:", event)
+                return jsonify({"status": "error", "message": "message text not found"}), 400
+
+            # 🔹 OpenAI API を使って返信を生成
+            reply_text = generate_gpt_response(user_message)
+
+            # 🔹 LINEに返信を送信
+            send_line_reply(reply_token, reply_text)
 
     return jsonify({"status": "ok"})
 
