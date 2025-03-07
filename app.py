@@ -7,23 +7,27 @@ app = Flask(__name__)
 # 環境変数からトークンとAPIキーを取得
 LINE_ACCESS_TOKEN = os.getenv("LINE_ACCESS_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # カスタムGPT（Assistant）のID
 
-# 環境変数の確認をログに出力（デバッグ用）
+# 環境変数の確認
 if not OPENAI_API_KEY:
     app.logger.warning("⚠️ OPENAI_API_KEY が設定されていません！")
 
 if not LINE_ACCESS_TOKEN:
     app.logger.warning("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
 
+if not ASSISTANT_ID:
+    app.logger.warning("⚠️ ASSISTANT_ID が設定されていません！")
+
 @app.route("/", methods=["GET"])
 def home():
-    return "LINE Bot with GPT is running!"
+    return "LINE Bot with Custom GPT is running!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """LINEからのWebhookを受信して処理"""
-    data = request.get_json(force=True)  # force=TrueでJSONパースエラーを防ぐ
-    app.logger.info(f"Received: {data}")  # ログにデータを出力（デバッグ用）
+    data = request.get_json(force=True)
+    app.logger.info(f"Received: {data}")
 
     if not data or "events" not in data:
         app.logger.warning("⚠️ Webhook に events データが含まれていません！")
@@ -33,15 +37,11 @@ def webhook():
         reply_token = event.get("replyToken")
         user_message = event.get("message", {}).get("text", "")
 
-        if not reply_token:
-            app.logger.warning(f"⚠️ Warning: replyToken が見つかりません。イベントデータ: {event}")
+        if not reply_token or not user_message:
+            app.logger.warning(f"⚠️ Warning: 必要なデータが不足: {event}")
             continue
 
-        if not user_message:
-            app.logger.warning(f"⚠️ Warning: メッセージが見つかりません。イベントデータ: {event}")
-            continue
-
-        # 🔹 OpenAI API を使って返信を生成
+        # 🔹 カスタムGPT（Assistants API）を使って返信を生成
         reply_text = generate_gpt_response(user_message)
 
         # 🔹 LINEに返信を送信
@@ -50,33 +50,43 @@ def webhook():
     return jsonify({"status": "ok"})
 
 def generate_gpt_response(user_message):
-    """OpenAI API を使ってカスタムGPTのメッセージを生成"""
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-    data = {
-        "model": "gpt-4-turbo",  # ✅ `custom_gpt_id` を削除し、モデル名のみ指定
-        "messages": [{"role": "user", "content": user_message}]
-    }
+    """Assistants API を使ってカスタムGPTのメッセージを生成"""
+    # 1. スレッドを作成（ユーザーごとのスレッドID管理が必要）
+    thread_response = requests.post(
+        "https://api.openai.com/v1/threads",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        json={}
+    )
+    thread_id = thread_response.json().get("id")
 
-    try:
-        response = requests.post(url, json=data, headers=headers)
-        
-        # HTTP ステータスコードをチェック
-        if response.status_code != 200:
-            app.logger.error(f"❌ OpenAI API エラー: {response.status_code}, {response.text}")
-            return "エラーが発生しました。"
+    # 2. スレッドにメッセージを追加
+    requests.post(
+        f"https://api.openai.com/v1/threads/{thread_id}/messages",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        json={"role": "user", "content": user_message}
+    )
 
-        result = response.json()
-        app.logger.info(f"OpenAI API Response: {result}")  # 🔹 レスポンスをログに出力
+    # 3. カスタムGPT（Assistant）を実行
+    run_response = requests.post(
+        f"https://api.openai.com/v1/threads/{thread_id}/runs",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+        json={"assistant_id": ASSISTANT_ID}
+    )
 
-        return result.get("choices", [{}])[0].get("message", {}).get("content", "エラーが発生しました。")
+    run_data = run_response.json()
+    run_id = run_data.get("id")
 
-    except Exception as e:
-        app.logger.error(f"⚠️ OpenAI API 呼び出し中にエラー: {e}")
-        return "エラーが発生しました。"
+    # 4. 結果が返るまでポーリング（最大3回）
+    for _ in range(3):
+        response = requests.get(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+        )
+        messages = response.json().get("messages", [])
+        if messages:
+            return messages[-1]["content"]
+
+    return "エラーが発生しました。"
 
 def send_line_reply(reply_token, text):
     """LINEに返信を送る関数"""
@@ -92,7 +102,7 @@ def send_line_reply(reply_token, text):
 
     try:
         response = requests.post(url, json=data, headers=headers)
-        app.logger.info(f"LINE API Response: {response.status_code}, {response.json()}")  # 🔹 ステータスコードもログに出力
+        app.logger.info(f"LINE API Response: {response.status_code}, {response.json()}")
 
         if response.status_code != 200:
             app.logger.error(f"❌ LINE API エラー: {response.status_code}, {response.text}")
