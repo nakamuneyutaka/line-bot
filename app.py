@@ -111,7 +111,7 @@ def generate_gpt_response(user_message):
             app.logger.info(f"🔹 Run ステータス: {run_status}")
 
             if run_status == "completed":
-                break  # 実行完了なら次へ
+                break
             elif run_status in ["failed", "cancelled"]:
                 app.logger.error(f"❌ Run が失敗またはキャンセルされました: {run_status_response.json()}")
                 return "アシスタント実行が失敗またはキャンセルされました。"
@@ -129,25 +129,22 @@ def generate_gpt_response(user_message):
         response_json = response.json()
         app.logger.info(f"🔹 OpenAI API レスポンス: {response_json}")  # ここで詳細なログを出力
 
-        messages = response_json.get("messages", [])
+        messages = response_json.get("data", [])  # 'messages' → 'data' に修正
         if not messages:
             app.logger.error("❌ 取得したメッセージが空です。")
             return "AIからのレスポンスがありませんでした。"
 
-        # メッセージの最後のレスポンスを取得
-        last_message = messages[-1].get("content")
-        if isinstance(last_message, list) and last_message:
-            if isinstance(last_message[0], dict) and "text" in last_message[0]:
-                app.logger.info(f"✅ AI からの最終メッセージ: {last_message[0]['text']}")
-                return last_message[0]["text"]
-            app.logger.error("❌ メッセージ解析エラー")
-            return "メッセージ解析エラーが発生しました。"
-        elif isinstance(last_message, str):
-            app.logger.info(f"✅ AI からの最終メッセージ: {last_message}")
-            return last_message  # 直接テキストとして返す場合
+        # ** 修正ポイント: `role` が `assistant` のメッセージを探す **
+        assistant_message = next((msg for msg in messages if msg["role"] == "assistant"), None)
+        
+        if assistant_message and "content" in assistant_message:
+            for content in assistant_message["content"]:
+                if content["type"] == "text":
+                    app.logger.info(f"✅ AI からの最終メッセージ: {content['text']['value']}")
+                    return content["text"]["value"]
 
-        app.logger.error("❌ 予期しないエラーが発生しました。")
-        return "予期しないエラーが発生しました。"
+        app.logger.error("❌ AIからのレスポンスの解析に失敗しました。")
+        return "AIからのレスポンスの解析に失敗しました。"
 
     except Exception as e:
         app.logger.error(f"⚠️ OpenAI API 呼び出し中にエラー: {e}")
