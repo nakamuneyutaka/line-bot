@@ -57,8 +57,7 @@ def generate_gpt_response(user_message):
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     data = {
-        "model": "gpt-4-turbo",
-        "custom_gpt_id": "g-67c0fb788848819195db91164e464600",
+        "model": "gpt-4-turbo",  # ✅ `custom_gpt_id` を削除し、モデル名のみ指定
         "messages": [{"role": "user", "content": user_message}]
     }
 
