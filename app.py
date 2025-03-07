@@ -13,10 +13,8 @@ ASSISTANT_ID = os.getenv("ASSISTANT_ID")  # カスタムGPT（Assistant）のID
 # 環境変数の確認
 if not OPENAI_API_KEY:
     app.logger.warning("⚠️ OPENAI_API_KEY が設定されていません！")
-
 if not LINE_ACCESS_TOKEN:
     app.logger.warning("⚠️ LINE_ACCESS_TOKEN が設定されていません！")
-
 if not ASSISTANT_ID:
     app.logger.warning("⚠️ ASSISTANT_ID が設定されていません！")
 
@@ -60,13 +58,14 @@ def webhook():
 def generate_gpt_response(user_message):
     """Assistants API を使ってカスタムGPTのメッセージを生成"""
     try:
-        # 1. スレッドを作成（ユーザーごとのスレッドID管理が必要）
+        # 1. スレッドを作成
         thread_response = requests.post("https://api.openai.com/v1/threads", headers=HEADERS, json={})
         if thread_response.status_code != 200:
             app.logger.error(f"❌ スレッド作成エラー: {thread_response.status_code}, {thread_response.text}")
             return "エラーが発生しました。"
 
         thread_id = thread_response.json().get("id")
+        app.logger.info(f"✅ スレッド作成成功: {thread_id}")
 
         # 2. スレッドにメッセージを追加
         message_response = requests.post(
@@ -78,7 +77,7 @@ def generate_gpt_response(user_message):
             app.logger.error(f"❌ メッセージ追加エラー: {message_response.status_code}, {message_response.text}")
             return "エラーが発生しました。"
 
-        # 3. カスタムGPT（Assistant）を実行
+        # 3. アシスタントを実行
         run_response = requests.post(
             f"https://api.openai.com/v1/threads/{thread_id}/runs",
             headers=HEADERS,
@@ -89,10 +88,11 @@ def generate_gpt_response(user_message):
             return "エラーが発生しました。"
 
         run_id = run_response.json().get("id")
+        app.logger.info(f"✅ アシスタント実行成功: {run_id}")
 
         # 4. 結果が返るまでポーリング（最大3回）
         for _ in range(3):
-            time.sleep(2)  # 2秒待つ（APIの制限回避）
+            time.sleep(2)
             response = requests.get(
                 f"https://api.openai.com/v1/threads/{thread_id}/messages",
                 headers=HEADERS
@@ -103,7 +103,7 @@ def generate_gpt_response(user_message):
 
             messages = response.json().get("messages", [])
             if messages:
-                return messages[-1]["content"]
+                return messages[-1].get("content", "エラーが発生しました。")
 
         return "エラーが発生しました。"
 
