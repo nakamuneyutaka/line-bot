@@ -41,15 +41,14 @@ def chat():
     response = generate_gpt_response(user_message)
     return jsonify({"response": response})
 
-@app.route('/webhook', methods=['GET', 'POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     """LINE の Webhook エンドポイント"""
-    if request.method == 'GET':
-        return "Webhook is running", 200  # Webhook の動作確認用
-
     signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
-
+    
+    app.logger.info("📩 Webhook 受信: " + body)
+    
     if not signature:
         app.logger.error("❌ LINE Webhook の署名がありません")
         return jsonify({"error": "Missing X-Line-Signature"}), 400
@@ -128,7 +127,6 @@ def generate_gpt_response(user_message):
         if not run_id:
             return "Run ID の取得に失敗しました。"
 
-        # AI のレスポンスを取得
         time.sleep(3)
         response = requests.get(
             f"https://api.openai.com/v1/threads/{thread_id}/messages",
@@ -153,4 +151,4 @@ def generate_gpt_response(user_message):
         return "システムエラーが発生しました。"
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, debug=True)
